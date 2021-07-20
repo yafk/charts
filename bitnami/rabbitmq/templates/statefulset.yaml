@@ -7,6 +7,9 @@ metadata:
     {{- if .Values.statefulsetLabels }}
     {{- include "common.tplvalues.render" (dict "value" .Values.statefulsetLabels "context" $) | nindent 4 }}
     {{- end }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
 spec:
   serviceName: {{ template "rabbitmq.fullname" . }}-headless
   podManagementPolicy: {{ .Values.podManagementPolicy }}
@@ -25,12 +28,12 @@ spec:
         {{- include "common.tplvalues.render" (dict "value" .Values.podLabels "context" $) | nindent 8 }}
         {{- end }}
       annotations:
+        {{- if .Values.commonAnnotations }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 8 }}
+        {{- end }}
         checksum/config: {{ include (print $.Template.BasePath "/configuration.yaml") . | sha256sum }}
         {{- if or (not .Values.auth.existingErlangSecret) (not .Values.auth.existingPasswordSecret) .Values.extraSecrets }}
         checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
-        {{- end }}
-        {{- if and .Values.auth.tls.enabled (not .Values.auth.tls.existingSecret) }}
-        checksum/secret-cert: {{ include (print $.Template.BasePath "/certs.yaml") . | sha256sum }}
         {{- end }}
         {{- if or .Values.podAnnotations .Values.metrics.enabled }}
         {{- include "rabbitmq.podAnnotations" . | nindent 8 }}
@@ -166,6 +169,16 @@ spec:
                 secretKeyRef:
                   name: {{ template "rabbitmq.secretErlangName" . }}
                   key: rabbitmq-erlang-cookie
+            {{- if .Values.loadDefinition.enabled }}
+            - name: RABBITMQ_LOAD_DEFINITIONS
+              value: "yes"
+            - name: RABBITMQ_SECURE_PASSWORD
+              value: "no"
+            {{- else }}
+            - name: RABBITMQ_LOAD_DEFINITIONS
+              value: "no"
+            - name: RABBITMQ_SECURE_PASSWORD
+              value: "yes"
             - name: RABBITMQ_USERNAME
               value: {{ .Values.auth.username | quote }}
             - name: RABBITMQ_PASSWORD
@@ -173,6 +186,7 @@ spec:
                 secretKeyRef:
                   name: {{ template "rabbitmq.secretPasswordName" . }}
                   key: rabbitmq-password
+            {{- end }}
             - name: RABBITMQ_PLUGINS
               value: {{ include "rabbitmq.plugins" . | quote }}
             {{- if .Values.communityPlugins }}
@@ -198,7 +212,7 @@ spec:
               containerPort: 5672
             {{- if .Values.auth.tls.enabled }}
             - name: amqp-ssl
-              containerPort: 5671
+              containerPort: {{ .Values.service.tlsPort }}
             {{- end }}
             - name: dist
               containerPort: 25672
@@ -301,7 +315,7 @@ spec:
         {{- if .Values.auth.tls.enabled }}
         - name: certs
           secret:
-            secretName: {{ template "rabbitmq.secretTLSName" . }}
+            secretName: {{ template "rabbitmq.tlsSecretName" . }}
             items:
               - key: {{ ternary "tls.crt" "ca.crt" .Values.auth.tls.existingSecretFullChain }}
                 path: ca_certificate.pem

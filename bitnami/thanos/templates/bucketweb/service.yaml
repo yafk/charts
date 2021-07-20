@@ -5,6 +5,9 @@ metadata:
   name: {{ include "common.names.fullname" . }}-bucketweb
   labels: {{- include "common.labels.standard" . | nindent 4 }}
     app.kubernetes.io/component: bucketweb
+    {{- if .Values.commonLabels }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+    {{- end }}
   {{- if .Values.bucketweb.service.annotations }}
   annotations: {{- include "common.tplvalues.render" (dict "value" .Values.bucketweb.service.annotations "context" $) | nindent 4 }}
   {{- end }}
@@ -12,6 +15,9 @@ spec:
   type: {{ .Values.bucketweb.service.type }}
   {{- if and .Values.bucketweb.service.clusterIP (eq .Values.bucketweb.service.type "ClusterIP") }}
   clusterIP: {{ .Values.bucketweb.service.clusterIP }}
+  {{- end }}
+  {{- if ne .Values.bucketweb.service.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.bucketweb.service.externalTrafficPolicy }}
   {{- end }}
   {{- if and .Values.bucketweb.service.loadBalancerIP (eq .Values.bucketweb.service.type "LoadBalancer") }}
   loadBalancerIP: {{ .Values.bucketweb.service.loadBalancerIP }}
@@ -21,7 +27,7 @@ spec:
   {{- end }}
   ports:
     - port: {{ .Values.bucketweb.service.http.port }}
-      targetPort: http
+      targetPort: {{ .Values.bucketweb.service.targetPort | default "http" }}
       protocol: TCP
       name: http
       {{- if (and (or (eq .Values.bucketweb.service.type "NodePort") (eq .Values.bucketweb.service.type "LoadBalancer")) .Values.bucketweb.service.http.nodePort) }}

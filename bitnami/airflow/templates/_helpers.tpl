@@ -123,14 +123,14 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 Get the Redis(TM) credentials secret.
 */}}
 {{- define "airflow.redis.secretName" -}}
-{{- if and (.Values.redis.enabled) (not .Values.redis.existingSecret) -}}
+{{- if and (.Values.redis.enabled) (not .Values.redis.auth.existingSecret) -}}
     {{/* Create a include for the redis secret
     We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
     */}}
     {{- $name := default "redis" .Values.redis.nameOverride -}}
     {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- else if and (.Values.redis.enabled) ( .Values.redis.existingSecret) -}}
-    {{- printf "%s" .Values.redis.existingSecret -}}
+{{- else if and (.Values.redis.enabled) ( .Values.redis.auth.existingSecret) -}}
+    {{- printf "%s" .Values.redis.auth.existingSecret -}}
 {{- else }}
     {{- if .Values.externalRedis.existingSecret -}}
         {{- printf "%s" .Values.externalRedis.existingSecret -}}
@@ -223,6 +223,25 @@ Add environment variables to configure database values
 {{/*
 Add environment variables to configure database values
 */}}
+{{- define "airflow.database.existingsecret.key" -}}
+{{- if .Values.postgresql.enabled -}}
+    {{- printf "%s" "postgresql-password" -}}
+{{- else -}}
+    {{- if .Values.externalDatabase.existingSecret -}}
+        {{- if .Values.externalDatabase.existingSecretPasswordKey -}}
+            {{- printf "%s" .Values.externalDatabase.existingSecretPasswordKey -}}
+        {{- else -}}
+            {{- printf "%s" "postgresql-password" -}}
+        {{- end -}}
+    {{- else -}}
+        {{- printf "%s" "postgresql-password" -}}
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Add environment variables to configure database values
+*/}}
 {{- define "airflow.database.port" -}}
 {{- ternary "5432" .Values.externalDatabase.port .Values.postgresql.enabled | quote -}}
 {{- end -}}
@@ -239,7 +258,7 @@ Add environment variables to configure database values
   valueFrom:
     secretKeyRef:
       name: {{ include "airflow.postgresql.secretName" . }}
-      key: postgresql-password
+      key: {{ include "airflow.database.existingsecret.key" . }}
 - name: AIRFLOW_DATABASE_HOST
   value: {{ include "airflow.database.host" . }}
 - name: AIRFLOW_DATABASE_PORT_NUMBER
@@ -271,8 +290,6 @@ Add environment variables to configure redis values
 Add environment variables to configure airflow common values
 */}}
 {{- define "airflow.configure.airflow.common" -}}
-- name: AIRFLOW_EXECUTOR
-  value: {{ .Values.executor }}
 - name: AIRFLOW_FERNET_KEY
   valueFrom:
     secretKeyRef:
@@ -283,10 +300,8 @@ Add environment variables to configure airflow common values
 {{- if .Values.web.image.debug }}
 - name: BASH_DEBUG
   value: "1"
-- name: NAMI_DEBUG
-  value: "1"
-- name: NAMI_LOG_LEVEL
-  value: "trace8"
+- name: BITNAMI_DEBUG
+  value: "true"
 {{- end }}
 {{- end -}}
 
@@ -294,7 +309,7 @@ Add environment variables to configure airflow common values
 Add environment variables to configure airflow kubernetes executor
 */}}
 {{- define "airflow.configure.airflow.kubernetesExecutor" -}}
-{{- if eq .Values.executor "KubernetesExecutor" }}
+{{- if or (eq .Values.executor "KubernetesExecutor") (eq .Values.executor "CeleryKubernetesExecutor") }}
 - name: AIRFLOW__KUBERNETES__NAMESPACE
   value: {{ .Release.Namespace }}
 - name: AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY
@@ -431,4 +446,17 @@ airflow: git.plugins.repositories[$index].branch
 {{- include "common.warnings.rollingTag" .Values.worker.image }}
 {{- include "common.warnings.rollingTag" .Values.git.image }}
 {{- include "common.warnings.rollingTag" .Values.metrics.image }}
+{{- end -}}
+
+{{/*
+In Airflow version 2.1.0, the CeleryKubernetesExecutor requires setting workers with CeleryExecutor in order to work properly.
+This is a workaround and is subject to Airflow official resolution.
+Ref: https://github.com/bitnami/charts/pull/6096#issuecomment-856499047
+*/}}
+{{- define "airflow.worker.executor" -}}
+{{- if eq .Values.executor "CeleryKubernetesExecutor" -}}
+{{- printf "CeleryExecutor" -}}
+{{- else -}}
+{{- .Values.executor -}}
+{{- end -}}
 {{- end -}}

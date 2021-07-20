@@ -51,10 +51,10 @@ Return the volume to use to mount the static site in the NGINX container
 emptyDir: {}
 {{- else if .Values.staticSiteConfigmap }}
 configMap:
-  name: {{ .Values.staticSiteConfigmap }}
+  name: {{ printf "%s" (tpl .Values.staticSiteConfigmap $) -}}
 {{- else if .Values.staticSitePVC }}
 persistentVolumeClaim:
-  claimName: {{ .Values.staticSitePVC }}
+  claimName: {{ printf "%s" (tpl .Values.staticSitePVC $) -}}
 {{- end }}
 {{- end -}}
 
@@ -106,7 +106,7 @@ nginx: cloneStaticSiteFromGit
 
 {{/* Validate values of NGINX - Incorrect extra volume settings */}}
 {{- define "nginx.validateValues.extraVolumes" -}}
-{{- if and (.Values.extraVolumes) (not .Values.extraVolumeMounts) -}}
+{{- if and (.Values.extraVolumes) (not (or .Values.extraVolumeMounts .Values.cloneStaticSiteFromGit.extraVolumeMounts)) -}}
 nginx: missing-extra-volume-mounts
     You specified extra volumes but not mount points for them. Please set
     the extraVolumeMounts value

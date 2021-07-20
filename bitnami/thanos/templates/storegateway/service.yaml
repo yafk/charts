@@ -8,6 +8,9 @@ metadata:
     {{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
     prometheus-operator/monitor: 'true'
     {{- end }}
+    {{- if .Values.commonLabels }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+    {{- end }}
   {{- if .Values.storegateway.service.annotations }}
   annotations: {{- include "common.tplvalues.render" (dict "value" .Values.storegateway.service.annotations "context" $) | nindent 4 }}
   {{- end }}
@@ -15,6 +18,9 @@ spec:
   type: {{ .Values.storegateway.service.type }}
   {{- if and .Values.storegateway.service.clusterIP (eq .Values.storegateway.service.type "ClusterIP") }}
   clusterIP: {{ .Values.storegateway.service.clusterIP }}
+  {{- end }}
+  {{- if ne .Values.storegateway.service.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.storegateway.service.externalTrafficPolicy }}
   {{- end }}
   {{- if and .Values.storegateway.service.loadBalancerIP (eq .Values.storegateway.service.type "LoadBalancer") }}
   loadBalancerIP: {{ .Values.storegateway.service.loadBalancerIP }}

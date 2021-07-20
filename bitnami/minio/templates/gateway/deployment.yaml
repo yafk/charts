@@ -56,20 +56,18 @@ spec:
       {{- if .Values.hostAliases }}
       hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.hostAliases "context" $) | nindent 8 }}
       {{- end }}
-      {{- if .Values.securityContext.enabled }}
-      securityContext:
-        fsGroup: {{ .Values.securityContext.fsGroup }}
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
       {{- end }}
       {{- if .Values.initContainers }}
-      initContainers: {- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
+      initContainers: {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
       {{- end }}
       containers:
         - name: minio
           image: {{ include "minio.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
-          {{- if .Values.securityContext.enabled }}
-          securityContext:
-            runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 12 }}
           {{- end }}
           command:
             {{- if .Values.command }}
@@ -82,7 +80,7 @@ spec:
             {{- include "common.tplvalues.render" (dict "value" .Values.args "context" $) | nindent 12 }}
             {{- else }}
             - --certs-dir
-            - /opt/bitnami/minio/certs
+            - {{ default "/opt/bitnami/minio/certs" .Values.tls.mountPath }}
             - gateway
             - {{ .Values.gateway.type }}
             {{- if eq .Values.gateway.type "gcs" }}
@@ -94,7 +92,18 @@ spec:
             {{- end }}
             {{- end }}
           env:
-            {{- if and (eq .Values.gateway.type "gcs") .Values.gateway.auth.gcs.keyJSON }}
+            {{- if eq .Values.gateway.type "azure" }}
+            - name: AZURE_STORAGE_ACCOUNT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio.secretName" . }}
+                  key: azure-storage-account-name
+            - name: AZURE_STORAGE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio.secretName" . }}
+                  key: azure-storage-account-key
+            {{- else if and (eq .Values.gateway.type "gcs") .Values.gateway.auth.gcs.keyJSON }}
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: "/opt/bitnami/minio/secrets/key.json"
             {{- end }}
@@ -102,12 +111,14 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "minio.secretName" . }}
-                  key: {{ include "minio.secret.userKey" . }}
+                  key: access-key
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "minio.secretName" . }}
-                  key: {{ include "minio.secret.passwordKey" . }}
+                  key: secret-key
+            - name: MINIO_PROMETHEUS_AUTH_TYPE
+              value: {{ .Values.metrics.prometheusAuthType | quote }}
             {{- if .Values.extraEnv }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraEnv "context" $) | nindent 12 }}
             {{- end }}
@@ -128,6 +139,10 @@ spec:
           resources: {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
           volumeMounts:
+            {{- if .Values.tls.enabled }}
+            - name: minio-certs
+              mountPath: {{ default "/opt/bitnami/minio/certs" .Values.tls.mountPath }}
+            {{- end }}
             {{- if and (eq .Values.gateway.type "gcs") .Values.gateway.auth.gcs.keyJSON }}
             - name: minio-credentials
               mountPath: /opt/bitnami/minio/secrets/
@@ -157,6 +172,18 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
+        {{- if .Values.tls.enabled }}
+        - name: minio-certs
+          secret:
+            secretName: {{ include "minio.tlsSecretName" . }}
+            items:
+            - key: tls.crt
+              path: public.crt
+            - key: tls.key
+              path: private.key
+            - key: ca.crt
+              path: CAs/public.crt
         {{- end }}
         {{- if .Values.extraVolumes }}
         {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
